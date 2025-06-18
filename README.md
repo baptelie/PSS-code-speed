@@ -1,2 +1,14 @@
 # PSS-code-
 Plasma Specificity Scanning code
+
+The Plasma Specificity Scanning (PSS) method is an alternative neutralization fingerprinting method developed in the present study. PSS is designed to delineate multi-specific bnAb activity in plasma allowing differentiation between bnAb responses with a single bnAb specificity and those that develop multiple bnAb specificities simultaneously. The PSS fingerprinting method uses the same data set as the Spearman-based MSBP method, namely plasma neutralization data against the 41-virus multiclade panel and comparison with a reference bnAb set. To establish PSS, the reference bnAb data set is in the first step used to identify sub-panels of the reference pseudovirus panel with varying sizes that have the best ability to classify reference bnAbs into their known epitope clusters. Identified best performing virus-sub panels (n=40) are then used to predict plasma specificity by the MSBP method. For each plasma individual predictions across all 40 virus sub-panels are retrieved and then combined.
+The four main steps of the PSS method are outlined below and depicted in Figure 4 and Figure S13:
+1.	Randomly draw 65,000 smaller-sized virus sub-panels (n=10-35 viruses out of the 41 from the reference panel; 2,500 sub-panels per size). 
+2.	For each virus sub-panel: compare the clustering of bnAbs obtained using the complete-linkage clustering method on the correlation distance and the clustering of bnAbs by their known epitope cluster. This is done by computing the homogeneity, using an entropy-based measure of similarity between two clusters20,21. 
+3.	Select the 40 sub-panels with the highest homogeneity (Figure S13), i.e., the virus sub-panels with the best ability to classify bnAbs into their respective epitope clusters. 
+4.	Predict neutralization specificity of the plasma of interest on each of the 40 sub-panel using the classical Spearman fingerprinting method and derive a combined result. Then, continue to obtain an epitope prediction that considers predictions across all 40 virus sub-panels using two complementary approaches:
+a.	Individual bnAb-based predictions: We obtained and plotted correlation distributions between plasma and all reference bnAbs across the 40 virus sub-panels, and highlighted bnAbs for which the mean Spearman correlation with the analyzed plasma is above 0.40. 
+b.	bnAb class-based predictions: We combined the individual bnAb-based predictions by bnAb epitope class and calculated the percentage of epitope predictions per bnAb epitope class among all virus sub-panel predictions for each plasma. Spearman correlation lower than 0.40 are combined to a cluster with unknown specificity. bnAb class-based predictions provide a percentage for a given bnAb class that estimates the contribution of that bnAb class to the neutralizing capacity of the analyzed plasma.
+
+
+The file create_virus_panels.R does step 1-3. The file prediction_panels.R does step 4. 
