@@ -14,12 +14,12 @@ setwd("...")
 
 # LOAD THE SERUM NEUTRALIZATION DATA
 # NEEDS TO BE IN FOLLOWING FORMAT FOR RUNNING THE create_panels FUNCTION: 
-# FIRST COLUMN: uniqueID = patient ID (can be a combination of ID and DATE)
+# FIRST COLUMN: uniqueID = donor ID (can be a combination of ID and DATE)
 # REST OF THE COLUMNS = 1/NT50 measurements on virus panel (ENSURE THAT YOU INVERT THE MEASUREMENTS)
 # ENSURE THAT YOU REMOVE CNE40_BC
-# VIRUS NAMES SHOULD BE THE SAME IN data.patient AS IN data.mAb.panel
+# VIRUS NAMES SHOULD BE THE SAME IN data.donor AS IN data.mAb.panel
 
-data.patient<-read_xlsx("data_patient.xlsx")
+data.donor<-read_xlsx("data_donor.xlsx")
 
 # LOAD OUTCOMES FROM THE create_virus_panels FUNCTION 
 load("panelopt_date.Rdata")
@@ -31,30 +31,30 @@ data.mAb.panel<- read_xlsx("data_mAb_panel.xlsx")
 
 # FUNCTION FOR RUNNING THE VIRUS PANELS METHOD
 # ARGUMENTS OF THE FUNCTION:
-# neut data from patients
+# neut data from donors
 # outcomes from create_virus_panels function
 # neut data from mAb
-# key between SHCS ID and AT lab ID
-prediction_panels<-function(data.patient,panel_opt,paneltest,data.mAb.panel){
+
+prediction_panels<-function(data.donor,panel_opt,paneltest,data.mAb.panel){
   
-  colnames(data.patient)[1]<-"uniqueID"
+  colnames(data.donor)[1]<-"uniqueID"
   
   # ID MATCHING FOR PLOT 
-  id.match<-as.data.frame(cbind(data.patient$`uniqueID`,seq(1,nrow(data.patient))))
+  id.match<-as.data.frame(cbind(data.donor$`uniqueID`,seq(1,nrow(data.donor))))
   colnames(id.match)<-c("uniqueID","index")
   
   # PREDICTION AND CORRELATION MATRIX 
   Npan<-length(panel_opt)
-  prediction_allpanel<-as.data.frame(matrix(NA,nrow=nrow(data.patient),ncol=(Npan+1)))
-  prediction_allpanel$V1<-data.patient$`uniqueID`
+  prediction_allpanel<-as.data.frame(matrix(NA,nrow=nrow(data.donor),ncol=(Npan+1)))
+  prediction_allpanel$V1<-data.donor$`uniqueID`
   
-  prediction_mAb<-as.data.frame(matrix(NA,nrow=nrow(data.patient),ncol=(Npan+1)))
-  prediction_mAb$V1<-data.patient$`uniqueID`
+  prediction_mAb<-as.data.frame(matrix(NA,nrow=nrow(data.donor),ncol=(Npan+1)))
+  prediction_mAb$V1<-data.donor$`uniqueID`
   
   cluster.mAb<-data.mAb.panel %>% dplyr::select(mAb,Epitope)
   
-  cor_matrix_all <- vector(mode = "list", length = nrow(data.patient))
-  for (i in 1:nrow(data.patient)){
+  cor_matrix_all <- vector(mode = "list", length = nrow(data.donor))
+  for (i in 1:nrow(data.donor)){
     cor_matrix_all[[i]]<-as.data.frame(matrix(NA,nrow=Npan,ncol=nrow(cluster.mAb)))
     colnames(cor_matrix_all[[i]])<-cluster.mAb$mAb
   }
@@ -65,13 +65,13 @@ prediction_panels<-function(data.patient,panel_opt,paneltest,data.mAb.panel){
     print(k)
     name.panel.temp<-panel_opt[[k]]
     panel.temp<-data.mAb.panel %>% dplyr::select(mAb,all_of(name.panel.temp))
-    data.patient.temp<-data.patient %>% dplyr::select(`uniqueID`,all_of(name.panel.temp))
-    cor.matrix<-as.data.frame(matrix(NA,nrow=nrow(data.patient.temp),ncol=nrow(panel.temp)+1))
+    data.donor.temp<-data.donor %>% dplyr::select(`uniqueID`,all_of(name.panel.temp))
+    cor.matrix<-as.data.frame(matrix(NA,nrow=nrow(data.donor.temp),ncol=nrow(panel.temp)+1))
     colnames(cor.matrix)<-c("uniqueID", panel.temp$mAb)
-    cor.matrix$uniqueID<-data.patient$uniqueID
+    cor.matrix$uniqueID<-data.donor$uniqueID
     for (i in 1:nrow(cor.matrix)){
-      patient.temp<-cor.matrix$uniqueID[i]
-      vec.pat.temp<-data.patient.temp %>% filter(uniqueID==patient.temp) %>% 
+      donor.temp<-cor.matrix$uniqueID[i]
+      vec.pat.temp<-data.donor.temp %>% filter(uniqueID==donor.temp) %>% 
         dplyr::select(!c(uniqueID)) %>% as.vector() %>% t() %>% unlist()
       for (j in 1:nrow( panel.temp)){
         mab.temp<- panel.temp$mAb[j]
@@ -116,20 +116,20 @@ prediction_panels<-function(data.patient,panel_opt,paneltest,data.mAb.panel){
     mutate(MPERgroup=rowSums(prediction_allpanel== "MPER",na.rm = TRUE)) %>%
     mutate(V1V2group=rowSums(prediction_allpanel == "V1V2",na.rm = TRUE)) %>%
     mutate(V3Glygroup=rowSums(prediction_allpanel== "V3-Glycan",na.rm = TRUE)) %>%
-    mutate(V3GlyT2group=rowSums(prediction_allpanel== "V3-Glycan II",na.rm = TRUE)) %>%
+    mutate(InterV3group=rowSums(prediction_allpanel== "InterV3",na.rm = TRUE)) %>%
     mutate(SFgroup=rowSums(prediction_allpanel== "SF",na.rm = TRUE)) %>%
     mutate(nopredictiongroup=rowSums(prediction_allpanel== "no prediction",na.rm = TRUE)) %>%
     mutate(sumall=rowSums(cbind(CD4bsgroup,
                                 IFFPgroup,
                                 MPERgroup,V1V2group,V3Glygroup,
-                                V3GlyT2group,
+                                InterV3group,
                                 nopredictiongroup,SFgroup))) %>%
     mutate(CD4bs_pct=CD4bsgroup/sumall,
            IFFP_pct=IFFPgroup/sumall,
            MPER_pct=MPERgroup/sumall,
            V1V2_pct=V1V2group/sumall,
            V3Gly_pct=V3Glygroup/sumall,
-           V3GlyT2_pct=V3GlyT2group/sumall,
+           InterV3_pct=InterV3group/sumall,
            SF_pct=SFgroup/sumall,
            nopred_pct=nopredictiongroup/sumall
     )
@@ -138,24 +138,24 @@ prediction_panels<-function(data.patient,panel_opt,paneltest,data.mAb.panel){
   colnames(data.final)[1]<-"uniqueID"
   
   # CORRELATION AVERAGE VALUES
-  data.average.cor<-as.data.frame(matrix(NA,nrow=nrow(data.patient),
+  data.average.cor<-as.data.frame(matrix(NA,nrow=nrow(data.donor),
                                          ncol=(nrow(cluster.mAb)+1)))
   colnames(data.average.cor)<-c("ID",cluster.mAb$mAb)
-  data.average.cor$ID<-data.patient$uniqueID
+  data.average.cor$ID<-data.donor$uniqueID
   for (i in 1:nrow(data.average.cor)){
     for (j in 1:nrow(cluster.mAb)){
       data.average.cor[i,j+1]<-mean(cor_matrix_all[[i]][,j])
     }
   }
   
-  # CORRELATION DISTRIBUTION PER PATIENT 
+  # CORRELATION DISTRIBUTION PER donor 
   data_long <- data.average.cor %>%                       
     pivot_longer(colnames(data.average.cor[,-1])) %>% 
     as.data.frame()
   
-  cor.data<- vector(mode = "list", length = nrow(data.patient))
+  cor.data<- vector(mode = "list", length = nrow(data.donor))
   
-  for (i in 1:nrow(data.patient)){
+  for (i in 1:nrow(data.donor)){
     data.temp<-cor_matrix_all[[i]]
     data.temp$Panel<-seq(1:Npan)
     NCOL<-ncol(data.temp)
@@ -179,8 +179,8 @@ prediction_panels<-function(data.patient,panel_opt,paneltest,data.mAb.panel){
   
 }
 
-# RUN THE FUNCTION (~13 minutes on my mac)
-outcome<-prediction_panels(data.patient,panel_opt,paneltest,data.mAb.panel) 
+# RUN THE FUNCTION 
+outcome<-prediction_panels(data.donor,panel_opt,paneltest,data.mAb.panel) 
 
 # INDICATE HERE WHERE YOU WANT TO SAVE THE OUTCOME OF THE FUNCTION
 data.final<-outcome[[1]]
