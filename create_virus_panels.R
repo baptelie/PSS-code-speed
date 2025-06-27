@@ -24,7 +24,7 @@ setwd("...")
 data.mAb.panel<- read_xlsx("data_mAb_panel.xlsx")
 
 
-# FUNCTION FOR CREATING THE VIRUS PANELS
+# FUNCTION FOR CREATING THE SUB VIRUS PANELS
 # ARGUMENTS OF THE FUNCTION:
 # neut data
 # min.panel: minimum size of the virus panels (default=10)
@@ -123,7 +123,7 @@ create_panels <- function(data.mAb.panel,min.panel,max.panel,n.panel) {
   list(homogen_data,panel.tokeep,panel_opt)
 }
 
-# RUN THE FUNCTION (~7 minutes on my mac)
+# RUN THE FUNCTION 
 outcome<-create_panels(data.mAb.panel,min.panel=10,max.panel=35,n.panel=2500)
 
 # INDICATE HERE WHERE YOU WANT TO SAVE THE OUTCOME OF THE FUNCTION
