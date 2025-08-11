@@ -11,4 +11,4 @@ a.	Individual bnAb-based predictions: We obtained and plotted correlation distri
 b.	bnAb class-based predictions: We combined the individual bnAb-based predictions by bnAb epitope class and calculated the percentage of epitope predictions per bnAb epitope class among all virus sub-panel predictions for each plasma. Spearman correlation lower than 0.40 are combined to a cluster with unknown specificity. bnAb class-based predictions provide a percentage for a given bnAb class that estimates the contribution of that bnAb class to the neutralizing capacity of the analyzed plasma.
 
 
-The file create_virus_panels.R does step 1-3. The file prediction_panels.R does step 4. 
+The file create_virus_panels.R does step 1-3 (runs in 5-10min on MacBook Pro M1 with 8 cores). The file prediction_panels.R does step 4 (runs in 10-15min). 
