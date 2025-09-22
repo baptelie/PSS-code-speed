@@ -11,7 +11,7 @@ library(doParallel)
 library(doSNOW)
 
 ### DIRECTORY 
-setwd("...")
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # LOAD THE NEUTRALIZATION DATA FOR KNOWN mAb
 # NEEDS TO BE IN FOLLOWING FORMAT FOR RUNNING THE create_panels FUNCTION: 
@@ -21,7 +21,107 @@ setwd("...")
 # ENSURE THAT YOU REMOVE CNE40_BC
 
 ## mAb
-data.mAb.panel<- read_xlsx("data_mAb_panel.xlsx")
+data.mAb.panel_full<- read_xlsx("/Volumes/Research/Group-AT/Projects/1 BOOK Swiss4.5K_XBnAb/XbnAb neut database July 2025/5_Working file SHCS bnAbs with final neut data sets_July 2025 onwards.xlsx",
+                           skip = 7) %>% 
+  select(-`bnAb...14`) %>%
+  rename(mAb = `bnAb...1`) %>% 
+  mutate(across(14:54, ~ as.double(gsub(">25", "25", .))))
+
+data.mAb.panel = data.mAb.panel_full %>% 
+  filter(`Reference bnAb           Set Basic (n=43)` == "x") %>%
+  select(-`Epitope Region`, -`Reference/PubMed ID`, -Comments, -starts_with("Reference"),
+         -starts_with("Set Multi"))
+  
+
+create_panels <- function(data.mAb.panel, min.panel, max.panel, n.panel, n.cores, Npanel = 40) {
+  browser()
+  # Prepare data
+  data.forcor <- t(as.matrix(data.mAb.panel[, -c(1, 2)]))
+  colnames(data.forcor) <- data.mAb.panel$mAb
+  data.panel <- data.forcor
+  
+  # Map epitopes to numeric categories once
+  mAb_existingcl <- data.mAb.panel %>%
+    dplyr::select(mAb, Epitope) %>%
+    mutate(Epitope = dplyr::recode(Epitope,
+                                   CD4bs = "1", IF_FP = "2", MPER = "3",
+                                   SF = "4", V1V2 = "5", `V3-Glycan` = "6", `V3-Glycan II` = "7"
+    ))
+  epitope_map <- setNames(mAb_existingcl$Epitope, mAb_existingcl$mAb)
+  
+  # Generate candidate panels
+  num.panel <- max.panel - min.panel + 1
+  seq.length <- ncol(data.mAb.panel) - 2
+  x <- seq_len(seq.length)
+  
+  set.seed(98)
+  list_panel <- vector("list", num.panel)
+  for (j in seq_len(num.panel)) {
+    N <- min.panel - 1 + j
+    # sample panels more efficiently
+    list_panel[[j]] <- unique(replicate(n.panel, sort(sample.int(seq.length, N)), simplify = FALSE))
+    while(length(list_panel[[j]] < n.panel)){
+      list_panel[[j]] <- unique(c(list_panel[[j]],
+                           unique(sort(sample.int(seq.length, N)))))
+    }
+  }
+  
+  total_length <- num.panel * n.panel
+  NCLUSTER <- length(unique(mAb_existingcl$Epitope))
+  
+  # Start parallel backend
+  cl <- parallel::makeCluster(n.cores, type = "PSOCK")
+  doParallel::registerDoParallel(cl)
+  
+  homogen_vector <- foreach(
+    j = seq_len(total_length),
+    .combine = "rbind",
+    .packages = c("clevr")
+  ) %dopar% {
+    nlist.temp <- (j - 1) %/% n.panel + 1
+    klist.temp <- j - ((nlist.temp - 1) * n.panel)
+    combvirus.temp <- list_panel[[nlist.temp]][[klist.temp]]
+    
+    data.red <- data.panel[combvirus.temp, , drop = FALSE]
+    cor.matrix <- suppressWarnings(cor(data.red, method = "spearman", use = "pairwise.complete.obs"))
+    
+    if (!anyNA(cor.matrix)) {
+      hier.cl <- hclust(as.dist(1 - cor.matrix))
+      cl.attr <- cutree(hier.cl, NCLUSTER)
+      
+      # Fast homogeneity metrics (vector-based, avoid merge)
+      epitope_vec <- epitope_map[names(cl.attr)]
+      c(
+        j,
+        homogeneity(epitope_vec, cl.attr),
+        completeness(epitope_vec, cl.attr),
+        v_measure(epitope_vec, cl.attr),
+        rand_index(epitope_vec, cl.attr)
+      )
+    }
+  }
+  
+  parallel::stopCluster(cl)
+  
+  # Process results
+  homogen_data <- as.data.frame(homogen_vector)
+  homogen_order <- homogen_data %>%
+    arrange(desc(V2), desc(V3), desc(V4))
+  
+  panel.tokeep <- head(homogen_order, Npanel)
+  Npanel <- nrow(panel.tokeep)
+  
+  # Recover selected panels
+  panel_opt <- vector("list", Npanel)
+  for (i in seq_len(Npanel)) {
+    j <- panel.tokeep$V1[i]
+    nlist.temp <- (j - 1) %/% n.panel + 1
+    klist.temp <- j - ((nlist.temp - 1) * n.panel)
+    panel_opt[[i]] <- rownames(data.panel)[list_panel[[nlist.temp]][[klist.temp]]]
+  }
+  
+  list(homogen_data, panel.tokeep, panel_opt)
+}
 
 
 # FUNCTION FOR CREATING THE SUB VIRUS PANELS
@@ -124,7 +224,7 @@ create_panels <- function(data.mAb.panel,min.panel,max.panel,n.panel) {
 }
 
 # RUN THE FUNCTION 
-outcome<-create_panels(data.mAb.panel,min.panel=10,max.panel=35,n.panel=2500)
+outcome<-create_panels(data.mAb.panel,min.panel=10,max.panel=35,n.panel=100, n.cores = 4L)
 
 # INDICATE HERE WHERE YOU WANT TO SAVE THE OUTCOME OF THE FUNCTION
 homogen_data<-outcome[[1]]
