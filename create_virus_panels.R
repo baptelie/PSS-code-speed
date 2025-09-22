@@ -1,41 +1,41 @@
-### CODE FOR CREATING THE VIRUS PANELS
-### INDICATE UPDATES HERE:
-
-### PACKAGES
-library(readxl)
-library(dplyr)
-library(tidyr)
-library(clevr)
-library(foreach)
-library(doParallel)
-library(doSNOW)
-
-### DIRECTORY
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-
-# LOAD THE NEUTRALIZATION DATA FOR KNOWN mAb
-# NEEDS TO BE IN FOLLOWING FORMAT FOR RUNNING THE create_panels FUNCTION:
-# FIRST COLUMN: "mAb"
-# SECOND COLUMN: "Epitope"
-# REST OF THE COLUMN = VIRUS PANEL MEASUREMENTS (ONE COLUMN = ONE VIRUS)
-# ENSURE THAT YOU REMOVE CNE40_BC
-
-## mAb
-data.mAb.panel_full <- read_xlsx("/Volumes/Research/Group-AT/Projects/1 BOOK Swiss4.5K_XBnAb/XbnAb neut database July 2025/5_Working file SHCS bnAbs with final neut data sets_July 2025 onwards.xlsx",
-  skip = 7
-) %>%
-  select(-`bnAb...14`) %>%
-  rename(mAb = `bnAb...1`) %>%
-  mutate(across(14:54, ~ as.double(gsub(">25", "25", .))))
-
-data.mAb.panel <- data.mAb.panel_full %>%
-  filter(`Reference bnAb           Set Basic (n=43)` == "x") %>%
-  select(
-    -`Epitope Region`, -`Reference/PubMed ID`, -Comments, -starts_with("Reference"),
-    -starts_with("Set Multi")
-  )
-
-data.mAb.panel.nona <- data.mAb.panel %>% replace_na(list(CNE59 = 25, KER2018.11 = 25))
+# ### CODE FOR CREATING THE VIRUS PANELS
+# ### INDICATE UPDATES HERE:
+# 
+# ### PACKAGES
+# library(readxl)
+# library(dplyr)
+# library(tidyr)
+# library(clevr)
+# library(foreach)
+# library(doParallel)
+# library(doSNOW)
+# 
+# ### DIRECTORY
+# setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+# 
+# # LOAD THE NEUTRALIZATION DATA FOR KNOWN mAb
+# # NEEDS TO BE IN FOLLOWING FORMAT FOR RUNNING THE create_panels FUNCTION:
+# # FIRST COLUMN: "mAb"
+# # SECOND COLUMN: "Epitope"
+# # REST OF THE COLUMN = VIRUS PANEL MEASUREMENTS (ONE COLUMN = ONE VIRUS)
+# # ENSURE THAT YOU REMOVE CNE40_BC
+# 
+# ## mAb
+# data.mAb.panel_full <- read_xlsx("/Volumes/Research/Group-AT/Projects/1 BOOK Swiss4.5K_XBnAb/XbnAb neut database July 2025/5_Working file SHCS bnAbs with final neut data sets_July 2025 onwards.xlsx",
+#   skip = 7
+# ) %>%
+#   select(-`bnAb...14`) %>%
+#   rename(mAb = `bnAb...1`) %>%
+#   mutate(across(14:54, ~ as.double(gsub(">25", "50", .))))
+# 
+# data.mAb.panel <- data.mAb.panel_full %>%
+#   filter(`Reference bnAb           Set Basic (n=43)` == "x") %>%
+#   select(
+#     -`Epitope Region`, -`Reference/PubMed ID`, -Comments, -starts_with("Reference"),
+#     -starts_with("Set Multi")
+#   )
+# 
+# data.mAb.panel.nona <- data.mAb.panel %>% mutate(across(3:ncol(.), ~ replace(., is.na(.), 50)))
 
 
 create_panels <- function(data.mAb.panel, min.panel, max.panel, n.panel, n.cores, Npanel = 40, use.na.cor = "pairwise.complete.obs") {
@@ -155,12 +155,13 @@ create_panels <- function(data.mAb.panel, min.panel, max.panel, n.panel, n.cores
 #   outcome <- create_panels(data.mAb.panel, min.panel = 10, max.panel = 35, n.panel = 500, n.cores = 1L)
 # })
 
-# RUN THE FUNCTION
-outcome <- create_panels(data.mAb.panel, min.panel = 10, max.panel = 35, n.panel = 2500, n.cores = 4L, use.na.cor = "everything")
-
-# INDICATE HERE WHERE YOU WANT TO SAVE THE OUTCOME OF THE FUNCTION
-write.table(outcome[[1]], "../results/allpanels_basic_220925.txt", row.names = FALSE)
-
-write.table(outcome[[2]], "../results/panelopt_basic_220925.txt", row.names = FALSE)
-
-saveRDS(outcome[[3]], file = "../results/allpanels_basic_220925.RData")
+# # RUN THE FUNCTION
+# outcome <- create_panels(data.mAb.panel, min.panel = 10, max.panel = 35, n.panel = 2500, n.cores = 4L, use.na.cor = "everything")
+# 
+# # INDICATE HERE WHERE YOU WANT TO SAVE THE OUTCOME OF THE FUNCTION
+# write.table(outcome[[1]], "../results/allpanels_basic_220925.txt", row.names = FALSE)
+# 
+# write.table(outcome[[2]], "../results/panelopt_basic_220925.txt", row.names = FALSE)
+# 
+# panel_opt = outcome[[3]]
+# saveRDS(panel_opt, file = "../results/allpanels_basic_220925.RDS")
