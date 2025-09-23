@@ -48,11 +48,7 @@ create_panels <- function(data.mAb.panel, min.panel, max.panel, n.panel, n.cores
 
   # Map epitopes to numeric categories once
   mAb_existingcl <- data.mAb.panel %>%
-    dplyr::select(mAb, Epitope) %>%
-    mutate(Epitope = dplyr::recode(Epitope,
-      CD4bs = "1", IF_FP = "2", MPER = "3",
-      SF = "4", V1V2 = "5", `V3-Glycan` = "6", `V3-Glycan II` = "7"
-    ))
+    dplyr::select(mAb, Epitope)
   epitope_map <- setNames(mAb_existingcl$Epitope, mAb_existingcl$mAb)
 
   # Generate candidate panels
@@ -82,13 +78,13 @@ create_panels <- function(data.mAb.panel, min.panel, max.panel, n.panel, n.cores
     #   ))
     # }
   }
-
   total_length <- num.panel * n.panel
   NCLUSTER <- length(unique(mAb_existingcl$Epitope))
 
   # Start parallel backend
   cl <- parallel::makeCluster(n.cores, type = "PSOCK")
   doParallel::registerDoParallel(cl)
+  # browser()
 
   homogen_vector <- foreach(
     j = seq_len(total_length),

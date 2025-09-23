@@ -108,17 +108,17 @@ prediction_panels <- function(data.donor, panel_opt, data.mAb.panel, mcores = 1L
   
   max_spearman_epitope_counts$unknown = Npan - apply(max_spearman_epitope_counts[,1:length(chars)],1, sum)
   
-  max_spearman_epitope_counts %<>% 
-    mutate(
-      CD4bs_pct = CD4bs / Npan,
-      IFFP_pct = `Interface/Fusion Peptide` / Npan,
-      MPER_pct = MPER / Npan,
-      V1V2_pct = `V2-Apex` / Npan,
-      V3Gly_pct = `V3-Glycan` / Npan,
-      V3GlyT2_pct = ifelse(any(chars == "Inter-V3"), `Inter-V3` / Npan, 0),
-      SF_pct = `Silent Face` / Npan,
-      nopred_pct = unknown / Npan
-    )
+  # max_spearman_epitope_counts %<>% 
+  #   mutate(
+  #     CD4bs_pct = CD4bs / Npan,
+  #     IFFP_pct = `Interface/Fusion Peptide` / Npan,
+  #     MPER_pct = MPER / Npan,
+  #     V1V2_pct = `V2-Apex` / Npan,
+  #     V3Gly_pct = `V3-Glycan` / Npan,
+  #     V3GlyT2_pct = ifelse(any(chars == "Inter-V3"), `Inter-V3` / Npan, 0),
+  #     SF_pct = `Silent Face` / Npan,
+  #     nopred_pct = unknown / Npan
+  #   )
   
   # CORRELATION AVERAGE VALUES
   data.average.cor1 = apply(array_correlations1, c(2,1), mean)
