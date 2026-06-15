@@ -1,163 +1,168 @@
-# ### CODE FOR CREATING THE VIRUS PANELS PREDICTION
-# ### INPUT data should have unique ID
-# ########
-# 
-# ### PACKAGES
-# library(readxl)
-# library(dplyr)
-# library(magrittr)
-# library(tidyr)
-# library(openxlsx)
-# 
-# ### DIRECTORY
-# setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-# 
-# 
-# # LOAD THE SERUM NEUTRALIZATION DATA
-# # NEEDS TO BE IN FOLLOWING FORMAT FOR RUNNING THE create_panels FUNCTION:
-# # FIRST COLUMN: uniqueID = donor ID (can be a combination of ID and DATE)
-# # REST OF THE COLUMNS = 1/NT50 measurements on virus panel (ENSURE THAT YOU INVERT THE MEASUREMENTS)
-# # ENSURE THAT YOU REMOVE CNE40_BC
-# # VIRUS NAMES SHOULD BE THE SAME IN data.donor AS IN data.mAb.panel
-# 
-# data.donor <- read_xlsx("/Volumes/Research/Group-AT/Projects/1 BOOK Swiss4.5K_XBnAb/XbnAb neut database July 2025/1_Master file 304 XbnAb users NT and prediction status Multi paper submitted July 9 2025.xlsx",
-#                         sheet = "XbNAb NT50 working sheet",
-#                         skip = 3
-# ) %>% 
-#   filter(!if_all(8:48, is.na)) %>% 
-#   mutate(across(8:48, ~ {
-#   pmin(as.double(.), 1e6)                    # cap values at 1e6
-# })) %>% 
-#   select(1,8:48) %>% 
-#   rename(BG505_W6M_C2_T332N = BG505_W6M_ENV_A5_T332N)
-# 
-# 
-# 
-# # LOAD OUTCOMES FROM THE create_virus_panels FUNCTION
-# panel_opt = readRDS("../results/allpanels_basic_220925.RDS")
-# paneltest <- read.table("../results/panelopt_basic_220925.txt")
-# 
-# # LOAD mAb panel data (should be the same as input for the create_virus_panels FUNCTION)
-# data.mAb.panel_full <- read_xlsx("/Volumes/Research/Group-AT/Projects/1 BOOK Swiss4.5K_XBnAb/XbnAb neut database July 2025/5_Working file SHCS bnAbs with final neut data sets_July 2025 onwards.xlsx",
-#                                  skip = 7
-# ) %>%
-#   select(-`bnAb...14`) %>%
-#   rename(mAb = `bnAb...1`) %>%
-#   mutate(across(14:54, ~ as.double(gsub(">25", "50", .))))
-# 
-# data.mAb.panel <- data.mAb.panel_full %>%
-#   filter(`Reference bnAb           Set Basic (n=43)` == "x") %>%
-#   select(
-#     -`Epitope Region`, -`Reference/PubMed ID`, -Comments, -starts_with("Reference"),
-#     -starts_with("Set Multi")
-#   )
-# 
-# data.mAb.panel.nona <- data.mAb.panel %>% mutate(across(3:ncol(.), ~ replace(., is.na(.), 50)))
+# =============================================================================
+# PLASMA SPECIFICITY SCANNING (PSS) — STEP 4: PREDICT PLASMA SPECIFICITY
+# =============================================================================
+# This script implements step 4 of the PSS method. Using the optimal virus
+# sub-panels selected in steps 1-3 (create_virus_panels.R), it predicts the
+# neutralization specificity of each plasma/serum donor by the Spearman
+# fingerprinting method and combines the predictions across all sub-panels.
+#
+# Two complementary outputs are produced:
+#   (a) Individual bnAb-based predictions: the distribution of plasma-vs-bnAb
+#       correlations across sub-panels, highlighting bnAbs with mean Spearman
+#       correlation > 0.40 (see `cor_distributions`).
+#   (b) bnAb class-based predictions: the number/percentage of sub-panel
+#       predictions per epitope class for each donor (see `epitope_counts`).
+#
+# INPUT DATA FORMAT
+#   `donor_data` (serum/plasma neutralization), one row per donor:
+#       - column 1: unique donor ID (e.g. a combination of donor ID and date)
+#       - remaining columns: 1/NT50 measurements against the virus panel
+#         IMPORTANT: invert the NT50 measurements (use 1/NT50).
+#       - virus column names MUST match those used in `mab_data`.
+#   `mab_data` (reference bnAb neutralization): same file used in steps 1-3.
+#
+# Runtime: ~1-2 min.
+#
+# This file only DEFINES the function. Use `run_PSS.R` to format the data and
+# run the full workflow.
+# =============================================================================
+
+# ---- Required packages (loaded by run_PSS.R) --------------------------------
+# dplyr, tidyr, parallel
+library(dplyr)
+library(tidyr)
+library(parallel)
 
 
-# FUNCTION FOR RUNNING THE VIRUS PANELS METHOD
-# ARGUMENTS OF THE FUNCTION:
-# neut data from donors
-# outcomes from create_virus_panels function
-# neut data from mAb
+# =============================================================================
+# MAIN FUNCTION
+# =============================================================================
+# Arguments:
+#   donor_data      : serum/plasma neutralization data (see format above)
+#   optimal_panels  : list of optimal virus sub-panels from create_virus_panels.R
+#   mab_data        : reference bnAb neutralization data
+#   n_cores         : number of cores for the parallel correlation step
+#   cor_min         : minimum mean correlation to call a confident prediction
+#   cor_min2        : tolerance subtracted from cor_min when discarding weak hits
+prediction_panels <- function(donor_data, optimal_panels, mab_data,
+                               n_cores = 1L, cor_min = 0.4, cor_min2 = 0) {
 
-prediction_panels <- function(data.donor, panel_opt, data.mAb.panel, mcores = 1L) {
-  colnames(data.donor)[1] <- "uniqueID"
-  
-  # ID MATCHING FOR PLOT
-  id.match <- as.data.frame(cbind(data.donor$`uniqueID`, seq(1, nrow(data.donor))))
-  colnames(id.match) <- c("uniqueID", "index")
-  
-  # PREDICTION AND CORRELATION MATRIX
-  Npan <- length(panel_opt)
-  
-  # COMPUTE CORRELATION FOR EACH PANEL
-  cor_matrix_all1 = parallel::mclapply(1:length(panel_opt),
-                     function(k){
-                       # name.panel.temp <- panel_opt[[k]]
-                       # panel.temp <- data.mAb.panel %>% dplyr::select(mAb, all_of(name.panel.temp))
-                       # data.patient.temp <- data.patient %>% dplyr::select(`uniqueID`, all_of(name.panel.temp))
-                       # cor.matrix <- as.data.frame(matrix(NA, nrow = nrow(data.patient.temp), ncol = nrow(panel.temp) + 1))
-                       # colnames(cor.matrix) <- c("uniqueID", panel.temp$mAb)
-                       # cor.matrix$uniqueID <- data.patient$uniqueID
-                       cor(data.mAb.panel %>% dplyr::select(all_of(panel_opt[[k]])) %>% t,
-                           data.donor %>% dplyr::select(all_of(panel_opt[[k]])) %>% t,
-                           method = "spearman",
-                           use = "pairwise.complete.obs")
-                     }, mc.cores = mcores)
-  array_correlations1 = cor_matrix_all1 %>% unlist %>% array(dim = c(dim(cor_matrix_all1[[1]]), Npan))
-  array_correlations1[is.na(array_correlations1)] = 0
+  # The first column of donor_data is the donor identifier
+  colnames(donor_data)[1] <- "uniqueID"
 
-  which_max_spearman = apply(array_correlations1, c(2,3), which.max)
-  max_spearman = apply(array_correlations1, c(2,3), max, na.rm=T)
-  which_max_spearman[max_spearman < .4] = NA
-  max_spearman_epitope = data.mAb.panel$Epitope[which_max_spearman] %>% matrix(ncol = ncol(which_max_spearman))
-  # Unique characters across the whole matrix
-  chars <- sort(unique(data.mAb.panel$Epitope))
-  
-  # Count per row and build tibble
-  max_spearman_epitope_counts <- apply(max_spearman_epitope, 1, function(row) {
-    tab <- table(row)
-    counts <- setNames(rep(0, length(chars)), chars) # start with zeros
-    counts[names(tab)] <- as.integer(tab)            # fill observed counts
+  # Lookup linking each donor ID to its row index (useful for downstream plots)
+  id_index <- as.data.frame(cbind(donor_data$uniqueID, seq_len(nrow(donor_data))))
+  colnames(id_index) <- c("uniqueID", "index")
+
+  n_panels <- length(optimal_panels)
+
+  # ---- Spearman correlation: each donor vs each reference bnAb --------------
+  #      computed separately on every optimal virus sub-panel, in parallel.
+
+  cl <- parallel::makeCluster(n_cores)
+  parallel::clusterExport(
+    cl,
+    c("mab_data", "donor_data", "optimal_panels"),
+    envir = environment()
+  )
+  parallel::clusterEvalQ(cl, library(dplyr))
+
+  cor_list <- parallel::parLapply(
+    cl,
+    seq_len(n_panels),
+    function(k) {
+      panel_viruses <- optimal_panels[[k]]
+      cor(
+        mab_data   %>% dplyr::select(all_of(panel_viruses)) %>% t(),
+        donor_data %>% dplyr::select(all_of(panel_viruses)) %>% t(),
+        method = "spearman",
+        use    = "pairwise.complete.obs"
+      )
+    }
+  )
+  parallel::stopCluster(cl)
+
+  # Stack the per-panel correlation matrices into a 3-D array:
+  # dimensions are bnAb x donor x sub-panel. Missing correlations become 0.
+  cor_array <- cor_list %>%
+    unlist() %>%
+    array(dim = c(dim(cor_list[[1]]), n_panels))
+  cor_array[is.na(cor_array)] <- 0
+
+  # ---- For each (donor, sub-panel): rank reference bnAbs by correlation -----
+  best_mab_idx        <- apply(cor_array, c(2, 3), which.max)
+  second_best_mab_idx <- apply(cor_array, c(2, 3), function(x) order(x, decreasing = TRUE)[2])
+  best_cor            <- apply(cor_array, c(2, 3), max, na.rm = TRUE)
+
+  # Discard the best match when it is too weakly correlated
+  best_mab_idx[best_cor < cor_min - cor_min2] <- NA
+
+  # Translate bnAb indices into their epitope classes
+  best_epitope        <- matrix(mab_data$Epitope[best_mab_idx], ncol = ncol(best_mab_idx))
+  second_best_epitope <- array(mab_data$Epitope[second_best_mab_idx], dim = dim(second_best_mab_idx))
+
+  # If the top match is weakly correlated AND disagrees with the runner-up,
+  # treat the prediction as undefined (NA).
+  best_epitope[best_epitope != second_best_epitope & best_cor < cor_min] <- NA
+
+  # ---- (b) bnAb class-based prediction: epitope counts per donor ------------
+  epitope_classes <- sort(unique(mab_data$Epitope))
+
+  # For each donor, count how many sub-panels predicted each epitope class
+  epitope_counts <- apply(best_epitope, 1, function(row) {
+    observed <- table(row)
+    counts   <- setNames(rep(0, length(epitope_classes)), epitope_classes)
+    counts[names(observed)] <- as.integer(observed)
     counts
   }) %>%
     t() %>%
     as_tibble() %>%
-    mutate(uniqueID = data.donor$uniqueID)
-  
-  max_spearman_epitope_counts$unknown = Npan - apply(max_spearman_epitope_counts[,1:length(chars)],1, sum)
-  
-  # max_spearman_epitope_counts %<>% 
-  #   mutate(
-  #     CD4bs_pct = CD4bs / Npan,
-  #     IFFP_pct = `Interface/Fusion Peptide` / Npan,
-  #     MPER_pct = MPER / Npan,
-  #     V1V2_pct = `V2-Apex` / Npan,
-  #     V3Gly_pct = `V3-Glycan` / Npan,
-  #     V3GlyT2_pct = ifelse(any(chars == "Inter-V3"), `Inter-V3` / Npan, 0),
-  #     SF_pct = `Silent Face` / Npan,
-  #     nopred_pct = unknown / Npan
-  #   )
-  
-  # CORRELATION AVERAGE VALUES
-  data.average.cor1 = apply(array_correlations1, c(2,1), mean)
-  data.average.cor1 %<>% as.data.frame()
-  names(data.average.cor1) = c(data.mAb.panel$mAb)
-  data.average.cor1$ID = data.donor$uniqueID
-  
-  # CORRELATION DISTRIBUTION PER donor
-  data_long <- data.average.cor1 %>%
-    pivot_longer(1:(ncol(.)-1)) %>%
-    as.data.frame()
-  
-  cor.data <- vector(mode = "list", length = nrow(data.donor))
-  
-  for (i in 1:nrow(data.donor)) {
-    data.temp = array_correlations1[,i,] %>% t %>% as.data.frame()
-    data.temp$Panel <- seq(1:Npan)
-    NCOL <- ncol(data.temp)
-    
-    ## COR DISTRIBUTION
-    data.temp.temp <- data.temp %>%
-      pivot_longer(colnames(data.temp)[-NCOL], names_to = "mAb", values_to = "COR")
-    data.temp.temp <- merge(data.temp.temp,
-                            data.mAb.panel %>% select(mAb, Epitope),
-                            by = "mAb"
-    )
-    test.temp <- data.temp.temp %>%
+    mutate(uniqueID = donor_data$uniqueID)
+
+  # Sub-panels with no confident prediction count toward an "unknown" class
+  epitope_counts$unknown <-
+    n_panels - apply(epitope_counts[, seq_along(epitope_classes)], 1, sum)
+
+  # ---- Average correlation per donor across all sub-panels ------------------
+  mean_cor <- apply(cor_array, c(2, 1), mean) %>% as.data.frame()
+  names(mean_cor) <- mab_data$mAb
+  mean_cor$ID <- donor_data$uniqueID
+
+  # ---- (a) Individual bnAb-based prediction: distribution per donor ---------
+  cor_distributions <- vector("list", nrow(donor_data))
+
+  for (i in seq_len(nrow(donor_data))) {
+    # Correlations for donor i: sub-panels (rows) x bnAbs (columns)
+    panel_cor <- cor_array[, i, ] %>% t() %>% as.data.frame()
+    names(panel_cor) <- mab_data$mAb
+    panel_cor$Panel  <- seq_len(n_panels)
+    n_col <- ncol(panel_cor)
+
+    # Long format: one row per (sub-panel, bnAb) correlation
+    cor_long <- panel_cor %>%
+      pivot_longer(colnames(panel_cor)[-n_col], names_to = "mAb", values_to = "COR")
+    cor_long <- merge(cor_long,
+                      mab_data %>% dplyr::select(mAb, Epitope),
+                      by = "mAb")
+
+    # Flag bnAbs whose mean correlation with this donor exceeds 0.4
+    strong_mabs <- cor_long %>%
       group_by(mAb) %>%
       summarise(meanCOR = mean(COR)) %>%
       filter(meanCOR > 0.4)
-    data.temp.temp$Epitopecolor <- data.temp.temp$Epitope
-    data.temp.temp$Epitopecolor[!data.temp.temp$mAb %in% test.temp$mAb] <- "under threshold"
-    cor.data[[i]] <- data.temp.temp
+
+    cor_long$Epitopecolor <- cor_long$Epitope
+    cor_long$Epitopecolor[!cor_long$mAb %in% strong_mabs$mAb] <- "under threshold"
+    cor_distributions[[i]] <- cor_long
   }
-  
-  ### OUTCOME
-  list(max_spearman_epitope_counts, array_correlations1, data.average.cor1, cor.data, id.match)
+
+  # ---- Return ---------------------------------------------------------------
+  list(epitope_counts    = epitope_counts,    # (b) counts per epitope class
+       cor_array         = cor_array,         # full bnAb x donor x panel array
+       mean_cor          = mean_cor,          # mean correlation per donor/bnAb
+       cor_distributions = cor_distributions, # (a) per-donor distributions
+       id_index          = id_index)          # donor ID <-> row index lookup
 }
 
-# RUN THE FUNCTION
-# outcome <- prediction_panels(data.donor, panel_opt, data.mAb.panel)
-
+# This script only DEFINES `prediction_panels()`.
+# To format the input data and execute the full PSS workflow, run `run_PSS.R`.
